@@ -1,0 +1,27 @@
+"Games"
+{
+	"#default"
+	{
+		"Signatures"
+		{
+			"CBaseClient::SendServerInfo"
+			{
+				"library"		"engine"
+				"windows"		"\x55\x8B\xEC\xB8\x2A\x2A\x2A\x2A\xE8\x2A\x2A\x2A\x2A\x53\x56\x8B\x2A\x2A\x2A\x2A\x2A\x8B\xD9\x68"
+			}
+			"Host_BuildConVarUpdateMessage"
+			{
+				"library"		"engine"
+				"windows"		"\x55\x8B\xEC\x81\xEC\x08\x02\x00\x00\x53\xFF\x75\x10\x8B\x5D\x0C\x53\xE8"
+			}
+		}
+        "Offsets"
+        {
+            "CBaseClient::GetPlayerSlot"
+            {
+                "linux"     "3"
+                "windows"   "14"
+            }
+        }
+	}
+}
