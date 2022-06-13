@@ -68,7 +68,7 @@ public void OnPluginStart()
 {
 	PrintToServer("[Smart Fast Downloads] Initializing...");
 	CheckExtensions();
-
+	sfd_lookup_method = CreateConVar("sfd_lookup", "0", "Which geolocation API should be used? 0 - SxGeo, 1 - GeoIP2 with SourceMod 1.11");
     gamedatafile = LoadGameConfigFile("betterfastdl.games");
     
     if(gamedatafile == null)
@@ -114,7 +114,7 @@ public void OnPluginStart()
 	checkOS(); //Figure out what OS we're in to apply fixes
 	
 	
-	sfd_lookup_method = CreateConVar("sfd_lookup", "0", "Which geolocation API should be used? 0 - SxGeo, 1 - GeoIP2 with SourceMod 1.11");
+
 	HookConVarChange(sfd_lookup_method, OnConVarChanged);
 	AutoExecConfig(true, "SmartFastDownloads");
 	
