@@ -2,6 +2,7 @@
 #include <dhooks>
 #include <sdktools>
 #include <sxgeo>
+#tryinclude <geoip>
 #pragma semicolon 1
 #pragma newdecls required
 
@@ -16,19 +17,58 @@ char os[32]; //OS string. Needed for OS-specific pointer fixes
 char clientIPAddress[32]; //IP of the connecting client
 
 ConVar downloadurl; // sv_downloadurl ConVar
+ConVar sfd_lookup_method;
 
+bool SxGeoAvailable = false;
+
+bool GeoIP2Available = false;
+
+float GetLatitude(char[] lookupIP)
+{	
+	if(!sfd_lookup_method.BoolValue)
+		return SxGeoLatitude(lookupIP);
+	else
+		return GeoipLatitude(lookupIP);
+}
+
+float GetLongitude(char[] lookupIP)
+{
+	if(!sfd_lookup_method.BoolValue)
+		return SxGeoLongitude(lookupIP);
+	else
+		return GeoipLongitude(lookupIP);	
+}
+
+float GetDistance(float nodeLatitude, float nodeLongitude, float clientLatitude, float clientLongitude)
+{
+	if(!sfd_lookup_method.BoolValue)
+		return SxGeoDistance(nodeLatitude,  nodeLongitude,  clientLatitude, clientLongitude);
+	else
+		return GeoipDistance(nodeLatitude,  nodeLongitude,  clientLatitude, clientLongitude);	
+}
 
 public Plugin myinfo = 
 {
 	name        = "Smart Fast Downloads",
-	description = "Redirects clients to the best FastDL depending on their location",
+	description = "Routes clients to the closest Fast Download server available",
 	author      = "Nolo001",
 	version     = "1.0"
 };
 
+
+void CheckExtensions()
+{
+	SxGeoAvailable = LibraryExists("SxGeo");
+	GeoIP2Available = (GetFeatureStatus(FeatureType_Native, "GeoipDistance") == FeatureStatus_Available) ? true : false;
+	if(!SxGeoAvailable && !GeoIP2Available)
+		SetFailState("No geolocation extensions detected. Please install SxGeo or update to SM 1.11 with new GeoIP2");
+}
+
 public void OnPluginStart()
 {
 	PrintToServer("[Smart Fast Downloads] Initializing...");
+	CheckExtensions();
+
     gamedatafile = LoadGameConfigFile("betterfastdl.games");
     
     if(gamedatafile == null)
@@ -73,10 +113,29 @@ public void OnPluginStart()
 	
 	checkOS(); //Figure out what OS we're in to apply fixes
 	
+	
+	sfd_lookup_method = CreateConVar("sfd_lookup", "0", "Which geolocation API should be used? 0 - SxGeo, 1 - GeoIP2 with SourceMod 1.11");
+	HookConVarChange(sfd_lookup_method, OnConVarChanged);
+	AutoExecConfig(true, "SmartFastDownloads");
+	
+	
 	downloadurl = FindConVar("sv_downloadurl"); //Save original downloadurl, so we can send it to clients who we can't locate
 	downloadurl.GetString(originalConVar, sizeof(originalConVar));	
 }
 
+public void OnConVarChanged(ConVar convar, const char[] oldValue, const char[] newValue)
+{
+	if(strcmp(newValue, "0") && !SxGeoAvailable)
+	{
+		LogError("[Smart Fast Downloads] Attempted to switch to SxGeo extension without it being loaded. Reverting.");
+		sfd_lookup_method.SetString("1");
+	}
+	if(strcmp(newValue, "1") && !GeoIP2Available)
+	{
+		LogError("[Smart Fast Downloads] Attempted to switch to GeoIP2 (SM 1.11) extension without it being loaded. Reverting.");
+		sfd_lookup_method.SetString("0");
+	}
+}
 
 public void OnConfigsExecuted()
 {
@@ -120,8 +179,8 @@ void getLocationSettings(char[] link) //Main function
 	{
 		char nodeURL[256], nodeName[64], finalurl[256];
 		float distance, currentDistance; //1 - distance to the closest server, may change in iterations. 2 - distance between client and current iteration node	
-		clientLatitude = SxGeoLatitude(clientIPAddress); //clients coordinates
-		clientLongitude = SxGeoLongitude(clientIPAddress);
+		clientLatitude = GetLatitude(clientIPAddress); //clients coordinates
+		clientLongitude = GetLongitude(clientIPAddress);
 		char section[64];
 		nodeConfig.GotoFirstSubKey(false);
 		do
@@ -139,7 +198,7 @@ void getLocationSettings(char[] link) //Main function
 				strcopy(link, 256, "EMPTY");
 				return;
 			}
-			currentDistance = SxGeoDistance(nodeLatitude, nodeLongitude, clientLatitude, clientLongitude);	
+			currentDistance = GetDistance(nodeLatitude, nodeLongitude, clientLatitude, clientLongitude);	
 			if((currentDistance < distance) || distance == 0)
 			{
 				nodeConfig.GetString("link", nodeURL, sizeof(nodeURL), "EMPTY");
@@ -189,8 +248,8 @@ void processnodeConfigurationFile() //Traverse all nodes and save their latitude
 			{
 				nodeConfig.GetSectionName(section, sizeof(section));
 				nodeConfig.GetString("ip", nodeclientIPAddress, sizeof(nodeclientIPAddress));
-				float nodeLatitude = SxGeoLatitude(nodeclientIPAddress);
-				float nodeLongitude = SxGeoLongitude(nodeclientIPAddress);
+				float nodeLatitude = GetLatitude(nodeclientIPAddress);
+				float nodeLongitude = GetLongitude(nodeclientIPAddress);
 				nodeConfig.SetFloat("latitude", nodeLatitude);	
 				nodeConfig.SetFloat("longitude", nodeLongitude);	
 				PrintToServer("[Smart Fast Downloads] Processed GPS location of node \"%s\".", section);
