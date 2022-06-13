@@ -177,7 +177,7 @@ void getLocationSettings(char[] link) //Main function
 	float clientLongitude, clientLatitude;
 	if(nodeConfig.JumpToKey("Nodes", false)) 
 	{
-		char nodeURL[256], nodeName[64], finalurl[256];
+		char nodeURL[256], finalurl[256];
 		float distance, currentDistance; //1 - distance to the closest server, may change in iterations. 2 - distance between client and current iteration node	
 		clientLatitude = GetLatitude(clientIPAddress); //clients coordinates
 		clientLongitude = GetLongitude(clientIPAddress);
@@ -194,7 +194,7 @@ void getLocationSettings(char[] link) //Main function
 										
 			if(clientLatitude == 0 || clientLongitude == 0 || nodeLatitude == 0 || nodeLongitude == 0)
 			{
-				WriteFileLine(debugfile, "No coordinates found for node %s. Aborting and sending default values. GPS: %f %f %f %f", nodeName, clientLatitude, clientLongitude, nodeLatitude, nodeLongitude);
+				WriteFileLine(debugfile, "No coordinates found for node %s. Aborting and sending default values. GPS: %f %f %f %f", section, clientLatitude, clientLongitude, nodeLatitude, nodeLongitude);
 				strcopy(link, 256, "EMPTY");
 				return;
 			}
