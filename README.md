@@ -13,7 +13,7 @@ After many years of experiencing slow content download speeds due to host speed 
 
 **Dependencies**
 
-* [SxGeo Extension](https://forums.alliedmods.net/showthread.php?t=311377) - this provides the geodatabase. GeoIP/GeoIP2 are not supported.
+* [SxGeo Extension](https://forums.alliedmods.net/showthread.php?t=311377) - this provides the geodatabase **OR** [GeoIP2 Extension that ships with newest SourceMod 1.11 dev builds](https://www.sourcemod.net/downloads.php?branch=dev)
 * Own gamedata, which is easy to find.
 
 
