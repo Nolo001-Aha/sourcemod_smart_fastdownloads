@@ -2,19 +2,20 @@
 #include <dhooks>
 #include <sdktools>
 #include <sxgeo>
-#tryinclude <geoip>
+#tryinclude <geoip> //need to add compile-speficic declarations later
+
 #pragma semicolon 1
 #pragma newdecls required
 
 
 GameData gamedatafile; //Handle to the gamedata
-Handle debugfile;
+Handle debugfile; //debug go brrrr
 
 KeyValues nodeConfig; //main node file
 
 char originalConVar[256]; //original sv_downloadurl value
 char os[32]; //OS string. Needed for OS-specific pointer fixes
-char clientIPAddress[32]; //IP of the connecting client
+char clientIPAddress[64]; //IP of the connecting client
 
 ConVar downloadurl; // sv_downloadurl ConVar
 ConVar sfd_lookup_method;
@@ -23,12 +24,20 @@ bool SxGeoAvailable = false;
 
 bool GeoIP2Available = false;
 
+public Plugin myinfo = 
+{
+	name        = "Smart Fast Downloads",
+	description = "Routes clients to the closest Fast Download server available",
+	author      = "Nolo001",
+	version     = "1.0"
+};
+
 float GetLatitude(char[] lookupIP)
 {	
 	if(!sfd_lookup_method.BoolValue)
 		return SxGeoLatitude(lookupIP);
 	else
-		return GeoipLatitude(lookupIP);
+		return GeoipLatitude(lookupIP);		
 }
 
 float GetLongitude(char[] lookupIP)
@@ -46,15 +55,6 @@ float GetDistance(float nodeLatitude, float nodeLongitude, float clientLatitude,
 	else
 		return GeoipDistance(nodeLatitude,  nodeLongitude,  clientLatitude, clientLongitude);	
 }
-
-public Plugin myinfo = 
-{
-	name        = "Smart Fast Downloads",
-	description = "Routes clients to the closest Fast Download server available",
-	author      = "Nolo001",
-	version     = "1.0"
-};
-
 
 void CheckExtensions()
 {
@@ -125,12 +125,12 @@ public void OnPluginStart()
 
 public void OnConVarChanged(ConVar convar, const char[] oldValue, const char[] newValue)
 {
-	if(strcmp(newValue, "0") && !SxGeoAvailable)
+	if(strcmp(newValue, "1") && !SxGeoAvailable)
 	{
 		LogError("[Smart Fast Downloads] Attempted to switch to SxGeo extension without it being loaded. Reverting.");
 		sfd_lookup_method.SetString("1");
 	}
-	if(strcmp(newValue, "1") && !GeoIP2Available)
+	if(strcmp(newValue, "0") && !GeoIP2Available)
 	{
 		LogError("[Smart Fast Downloads] Attempted to switch to GeoIP2 (SM 1.11) extension without it being loaded. Reverting.");
 		sfd_lookup_method.SetString("0");
@@ -143,11 +143,9 @@ public void OnConfigsExecuted()
 	downloadurl.GetString(originalConVar, sizeof(originalConVar));
 }
 
-
 public MRESReturn sendServerInfoDetCallback_Pre(Address pointer, Handle hReturn, Handle hParams) //First callback in chain, derive client and find their IP
 {
-	WriteFileLine(debugfile, "------------------ START SENDING DATA (Frame %f)-------------------", GetGameTime());
-
+	WriteFileLine(debugfile, "------------------ START SENDING-------------------");
 	int client;
 	Address pointer2 = pointer + view_as<Address>(0x4);
 	if(StrEqual(os, "windows", false))
@@ -159,7 +157,7 @@ public MRESReturn sendServerInfoDetCallback_Pre(Address pointer, Handle hReturn,
 	{
 		client = view_as<int>(GetPlayerSlot(pointer)) + 1;
 	}
-	GetClientIP(client, clientIPAddress, sizeof(clientIPAddress));   
+	GetClientIP(client, clientIPAddress, sizeof(clientIPAddress));
 	return MRES_Ignored;
 }
 
@@ -178,6 +176,7 @@ void getLocationSettings(char[] link) //Main function
 	if(nodeConfig.JumpToKey("Nodes", false)) 
 	{
 		char nodeURL[256], finalurl[256];
+		PrintToServer(clientIPAddress);
 		float distance, currentDistance; //1 - distance to the closest server, may change in iterations. 2 - distance between client and current iteration node	
 		clientLatitude = GetLatitude(clientIPAddress); //clients coordinates
 		clientLongitude = GetLongitude(clientIPAddress);
@@ -191,10 +190,10 @@ void getLocationSettings(char[] link) //Main function
 					
 			nodeLatitude = nodeConfig.GetFloat("latitude");
 			nodeLongitude = nodeConfig.GetFloat("longitude");
-										
+			PrintToServer(clientIPAddress);							
 			if(clientLatitude == 0 || clientLongitude == 0 || nodeLatitude == 0 || nodeLongitude == 0)
 			{
-				WriteFileLine(debugfile, "No coordinates found for node %s. Aborting and sending default values. GPS: %f %f %f %f", section, clientLatitude, clientLongitude, nodeLatitude, nodeLongitude);
+				WriteFileLine(debugfile, "Failed distance calculation. Sending default values. Client(%f %f IP: %s) Node (%s).", clientLatitude, clientLongitude, clientIPAddress, section);
 				strcopy(link, 256, "EMPTY");
 				return;
 			}
@@ -208,7 +207,7 @@ void getLocationSettings(char[] link) //Main function
 		}
 		while(nodeConfig.GotoNextKey(false));
 		strcopy(link, 256, nodeURL);
-		WriteFileLine(debugfile, "Sending: Distance is %f. Client IP Address: %s",  finalurl, distance, clientIPAddress);	
+		WriteFileLine(debugfile, "Sending: Distance is %f. Client IP Address: %s", distance, clientIPAddress);	
 	}
 	
 }
@@ -220,12 +219,12 @@ void setConVarValue(char[] value) //Sets the actual ConVar value
 	if (StrEqual(value, "EMPTY", false))
 	{
 		SetConVarString(downloadurl, originalConVar, true, false);	
-		WriteFileLine(debugfile, "Sending old value %s", originalConVar);
+		WriteFileLine(debugfile, "Default value set.");
 	}
 	else
 	{
 		SetConVarString(downloadurl, value, true, false);	
-		WriteFileLine(debugfile, "Sending new value %s", value);
+		WriteFileLine(debugfile, "New value set.");
 	}
 	FlushFile(debugfile);
 	SetConVarFlags(downloadurl, oldflags|FCVAR_REPLICATED);
@@ -234,7 +233,7 @@ void setConVarValue(char[] value) //Sets the actual ConVar value
 public MRESReturn buildConVarMessageDetCallback_Post(Handle hParams) //Reverts the ConVar to it's original value
 {
 	setConVarValue("EMPTY");
-	WriteFileLine(debugfile, "-------------------- END OF DATA (Frame %f)---------------------", GetGameTime());	
+	WriteFileLine(debugfile, "-------------------- END---------------------");	
 	return MRES_Ignored;
 }
 
