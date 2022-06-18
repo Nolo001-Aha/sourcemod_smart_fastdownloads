@@ -2,80 +2,58 @@
 #include <dhooks>
 #include <sdktools>
 #include <sxgeo>
-#tryinclude <geoip> //need to add compile-speficic declarations later
+#tryinclude <geoip>
 
 #pragma semicolon 1
 #pragma newdecls required
 
-
 GameData gamedatafile; //Handle to the gamedata
-Handle debugfile; //debug go brrrr
-
+Handle debugfile;
+Handle hPlayerSlot = INVALID_HANDLE;
 KeyValues nodeConfig; //main node file
 
 char originalConVar[256]; //original sv_downloadurl value
-char os[32]; //OS string. Needed for OS-specific pointer fixes
 char clientIPAddress[64]; //IP of the connecting client
 
-ConVar downloadurl; // sv_downloadurl ConVar
+ConVar downloadurl; // sv_downloadurl
 ConVar sfd_lookup_method;
+ConVar sfd_debug;
 
 bool SxGeoAvailable = false;
-
+#if defined _geoip_included
 bool GeoIP2Available = false;
+#endif
+
+enum OSType{
+	OS_Linux = 0,
+	OS_Windows,
+	OS_Unknown
+}
+
+OSType os; //Needed for OS-specific pointer fixes
 
 public Plugin myinfo = 
 {
 	name        = "Smart Fast Downloads",
 	description = "Routes clients to the closest Fast Download server available",
 	author      = "Nolo001",
-	version     = "1.0"
+	url			= "https://github.com/Nolo001-Aha/sourcemod_smart_fastdownloads",
+	version     = "1.1"
 };
-
-float GetLatitude(char[] lookupIP)
-{   
-	if(!sfd_lookup_method.BoolValue)
-		return SxGeoLatitude(lookupIP);
-	else
-		return GeoipLatitude(lookupIP);     
-}
-
-float GetLongitude(char[] lookupIP)
-{
-	if(!sfd_lookup_method.BoolValue)
-		return SxGeoLongitude(lookupIP);
-	else
-		return GeoipLongitude(lookupIP);    
-}
-
-float GetDistance(float nodeLatitude, float nodeLongitude, float clientLatitude, float clientLongitude)
-{
-	if(!sfd_lookup_method.BoolValue)
-		return SxGeoDistance(nodeLatitude,  nodeLongitude,  clientLatitude, clientLongitude);
-	else
-		return GeoipDistance(nodeLatitude,  nodeLongitude,  clientLatitude, clientLongitude);   
-}
-
-void CheckExtensions()
-{
-	SxGeoAvailable = LibraryExists("SxGeo");
-	GeoIP2Available = GetFeatureStatus(FeatureType_Native, "GeoipDistance") == FeatureStatus_Available;
-	if(!SxGeoAvailable && !GeoIP2Available)
-		SetFailState("No geolocation extensions detected. Please install SxGeo or update to SM 1.11 with new GeoIP2");
-}
 
 public void OnPluginStart()
 {
 	PrintToServer("[Smart Fast Downloads] Initializing...");
 	CheckExtensions();
 	sfd_lookup_method = CreateConVar("sfd_lookup", "0", "Which geolocation API should be used? 0 - SxGeo, 1 - GeoIP2 with SourceMod 1.11");
+	sfd_debug = CreateConVar("sfd_debug", "1", "Enable connection states debug?");
 	gamedatafile = LoadGameConfigFile("betterfastdl.games");
 	
 	if(gamedatafile == null)
 		SetFailState("Cannot load betterfastdl.games.txt! Make sure you have it installed!");
 
 	Handle detourSendServerInfo = DHookCreateDetour(Address_Null, CallConv_THISCALL, ReturnType_Bool, ThisPointer_Address);
-	if(detourSendServerInfo==null)
+	if(detourSendServerInfo == null)
 		SetFailState("Failed to create detour for CBaseClient::SendServerInfo!");
 		
 	if(!DHookSetFromConf(detourSendServerInfo, gamedatafile, SDKConf_Signature, "CBaseClient::SendServerInfo"))
@@ -100,6 +78,11 @@ public void OnPluginStart()
   
 	if(!DHookEnableDetour(detourBuildConVarMessage, true, buildConVarMessageDetCallback_Post))
 		SetFailState("Failed to detour Host_BuildConVarUpdateMessage PostHook!");
+		
+	StartPrepSDKCall(SDKCall_Raw);
+	PrepSDKCall_SetFromConf(gamedatafile, SDKConf_Virtual, "CBaseClient::GetPlayerSlot");
+	PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);
+	hPlayerSlot = EndPrepSDKCall();
 
 	nodeConfig = new KeyValues("FastDL Settings"); //Load the main node config file
 	char config[PLATFORM_MAX_PATH];
@@ -108,7 +91,7 @@ public void OnPluginStart()
 	nodeConfig.Rewind();
 	processnodeConfigurationFile();
 	
-	BuildPath(Path_SM, config, sizeof(config), "fastdl_debug.log"); //Open debug file
+	BuildPath(Path_SM, config, sizeof(config), "fastdl_debug.log");
 	debugfile = OpenFile(config, "a+", false);
 	
 	checkOS(); //Figure out what OS we're in to apply fixes
@@ -127,32 +110,39 @@ public void OnConVarChanged(ConVar convar, const char[] oldValue, const char[] n
 		LogError("[Smart Fast Downloads] Attempted to switch to SxGeo extension without it being loaded. Reverting.");
 		sfd_lookup_method.SetString("1");
 	}
+	#if defined _geoip_included
 	if(strcmp(newValue, "0") && !GeoIP2Available)
+	#else
+	if(strcmp(newValue, "0"))
+	#endif
 	{
-		LogError("[Smart Fast Downloads] Attempted to switch to GeoIP2 (SM 1.11) extension without it being loaded. Reverting.");
+		LogError("[Smart Fast Downloads] Attempted to switch to GeoIP2 (SM 1.11) when the plugin was compiled without it or the extension is not loaded. Reverting.");
 		sfd_lookup_method.SetString("0");
 	}
+	
 }
 
 public void OnConfigsExecuted()
 {
-	downloadurl = FindConVar("sv_downloadurl"); //Save original downloadurl, so we can send it to clients who we can't locate
+	downloadurl = FindConVar("sv_downloadurl");
 	downloadurl.GetString(originalConVar, sizeof(originalConVar));
 }
 
 public MRESReturn sendServerInfoDetCallback_Pre(Address pointer, Handle hReturn, Handle hParams) //First callback in chain, derive client and find their IP
 {
-	WriteFileLine(debugfile, "------------------ START SENDING-------------------");
+	if(sfd_debug.BoolValue)
+		WriteFileLine(debugfile, "------------------ START SENDING-------------------");
+		
 	int client;
 	Address pointer2 = pointer + view_as<Address>(0x4);
-	if(StrEqual(os, "windows", false))
+	if(os == OS_Windows)
 	{
 
-		client = view_as<int>(GetPlayerSlot(pointer2)) + 1;
+		client = view_as<int>(SDKCall(hPlayerSlot, pointer2)) + 1;
 	}
 	else
 	{
-		client = view_as<int>(GetPlayerSlot(pointer)) + 1;
+		client = view_as<int>(SDKCall(hPlayerSlot, pointer)) + 1;
 	}
 	GetClientIP(client, clientIPAddress, sizeof(clientIPAddress));
 	return MRES_Ignored;
@@ -184,9 +174,11 @@ void getLocationSettings(char[] link, int size) //Main function
 			nodeConfig.GetSectionName(section, sizeof(section));
 			nodeLatitude = nodeConfig.GetFloat("latitude");
 			nodeLongitude = nodeConfig.GetFloat("longitude");             
-			if(clientLatitude == 0 || clientLongitude == 0 || nodeLatitude == 0 || nodeLongitude == 0)
+			if(clientLatitude == 0 || clientLongitude == 0)
 			{
-				WriteFileLine(debugfile, "Failed distance calculation. Sending default values. Client(%f %f IP: %s) Node (%s).", clientLatitude, clientLongitude, clientIPAddress, section);
+				if(sfd_debug.BoolValue)
+					WriteFileLine(debugfile, "Failed distance calculation. Sending default values. Client(%f %f IP: %s).", clientLatitude, clientLongitude, clientIPAddress);
+					
 				strcopy(link, 256, "EMPTY");
 				return;
 			}
@@ -200,7 +192,8 @@ void getLocationSettings(char[] link, int size) //Main function
 		}
 		while(nodeConfig.GotoNextKey(false));
 		strcopy(link, size, nodeURL);
-		WriteFileLine(debugfile, "Sending: Distance is %f. Client IP Address: %s", distance, clientIPAddress);  
+		if(sfd_debug.BoolValue)
+			WriteFileLine(debugfile, "Sending: Distance is %f. Client IP Address: %s", distance, clientIPAddress);  
 	}
 	
 }
@@ -211,13 +204,15 @@ void setConVarValue(char[] value) //Sets the actual ConVar value
 	SetConVarFlags(downloadurl, oldflags &~ FCVAR_REPLICATED);
 	if (StrEqual(value, "EMPTY", false))
 	{
-		SetConVarString(downloadurl, originalConVar, true, false);  
-		WriteFileLine(debugfile, "Default value set.");
+		SetConVarString(downloadurl, originalConVar, true, false);
+		if(sfd_debug.BoolValue)
+			WriteFileLine(debugfile, "Default value set.");
 	}
 	else
 	{
-		SetConVarString(downloadurl, value, true, false);   
-		WriteFileLine(debugfile, "New value set.");
+		SetConVarString(downloadurl, value, true, false); 
+		if(sfd_debug.BoolValue)
+			WriteFileLine(debugfile, "New value set.");
 	}
 	FlushFile(debugfile);
 	SetConVarFlags(downloadurl, oldflags|FCVAR_REPLICATED);
@@ -226,7 +221,9 @@ void setConVarValue(char[] value) //Sets the actual ConVar value
 public MRESReturn buildConVarMessageDetCallback_Post(Handle hParams) //Reverts the ConVar to it's original value
 {
 	setConVarValue("EMPTY");
-	WriteFileLine(debugfile, "-------------------- END---------------------");  
+	if(sfd_debug.BoolValue)
+		WriteDebugFile("-------------------- END---------------------"); 
+		
 	return MRES_Ignored;
 }
 
@@ -254,21 +251,57 @@ void processnodeConfigurationFile() //Traverse all nodes and save their latitude
 			nodeConfig.ExportToFile(config);
 	}
 }
-//TempEnts
-any GetPlayerSlot(Address pIClient)
+//self-explanatory stuff
+void WriteDebugFile(char[] string)
 {
-	static Handle hPlayerSlot = INVALID_HANDLE;
-	if (hPlayerSlot == INVALID_HANDLE)
-	{
-		StartPrepSDKCall(SDKCall_Raw);
-		PrepSDKCall_SetFromConf(gamedatafile, SDKConf_Virtual, "CBaseClient::GetPlayerSlot");
-		PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);
-		hPlayerSlot = EndPrepSDKCall();
-	}
-
-	return SDKCall(hPlayerSlot, pIClient);
+	WriteFileLine(debugfile, string);
+	FlushFile(debugfile);
 }
-// TempEnts
+
+float GetLatitude(char[] lookupIP)
+{
+	#if defined _geoip_included
+	if(!sfd_lookup_method.BoolValue)
+		return SxGeoLatitude(lookupIP);
+	else
+		return GeoipLatitude(lookupIP);
+	#else
+	return SxGeoLatitude(lookupIP);
+	#endif
+}
+
+float GetLongitude(char[] lookupIP)
+{
+	#if defined _geoip_included
+	if(!sfd_lookup_method.BoolValue)
+		return SxGeoLongitude(lookupIP);
+	else
+		return GeoipLongitude(lookupIP);  
+	#else
+	return SxGeoLongitude(lookupIP);
+	#endif
+}
+
+float GetDistance(float nodeLatitude, float nodeLongitude, float clientLatitude, float clientLongitude)
+{
+	#if defined _geoip_included
+	if(!sfd_lookup_method.BoolValue)
+		return SxGeoDistance(nodeLatitude,  nodeLongitude,  clientLatitude, clientLongitude);
+	else
+		return GeoipDistance(nodeLatitude,  nodeLongitude,  clientLatitude, clientLongitude);  
+	#else
+	return SxGeoDistance(nodeLatitude,  nodeLongitude,  clientLatitude, clientLongitude);
+	#endif
+}
+
+void CheckExtensions()
+{
+	SxGeoAvailable = LibraryExists("SxGeo");
+	#if defined _geoip_included
+	GeoIP2Available = GetFeatureStatus(FeatureType_Native, "GeoipDistance") == FeatureStatus_Available;
+	#endif
+}
+
 void checkOS()
 {
 	char cmdline[256];
@@ -276,14 +309,14 @@ void checkOS()
 
 	if (StrContains(cmdline, "./srcds_linux ", false) != -1)
 	{
-		os = "linux";
+		os = OS_Linux;
 	}
 	else if (StrContains(cmdline, ".exe", false) != -1)
 	{
-		os = "windows";
+		os = OS_Windows;
 	}
 	else
 	{
-		os = "unknown";
+		os = OS_Unknown;
 	}
 }
