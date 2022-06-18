@@ -33,11 +33,11 @@ public Plugin myinfo =
 };
 
 float GetLatitude(char[] lookupIP)
-{	
+{   
 	if(!sfd_lookup_method.BoolValue)
 		return SxGeoLatitude(lookupIP);
 	else
-		return GeoipLatitude(lookupIP);		
+		return GeoipLatitude(lookupIP);     
 }
 
 float GetLongitude(char[] lookupIP)
@@ -45,7 +45,7 @@ float GetLongitude(char[] lookupIP)
 	if(!sfd_lookup_method.BoolValue)
 		return SxGeoLongitude(lookupIP);
 	else
-		return GeoipLongitude(lookupIP);	
+		return GeoipLongitude(lookupIP);    
 }
 
 float GetDistance(float nodeLatitude, float nodeLongitude, float clientLatitude, float clientLongitude)
@@ -53,13 +53,13 @@ float GetDistance(float nodeLatitude, float nodeLongitude, float clientLatitude,
 	if(!sfd_lookup_method.BoolValue)
 		return SxGeoDistance(nodeLatitude,  nodeLongitude,  clientLatitude, clientLongitude);
 	else
-		return GeoipDistance(nodeLatitude,  nodeLongitude,  clientLatitude, clientLongitude);	
+		return GeoipDistance(nodeLatitude,  nodeLongitude,  clientLatitude, clientLongitude);   
 }
 
 void CheckExtensions()
 {
 	SxGeoAvailable = LibraryExists("SxGeo");
-	GeoIP2Available = (GetFeatureStatus(FeatureType_Native, "GeoipDistance") == FeatureStatus_Available) ? true : false;
+	GeoIP2Available = GetFeatureStatus(FeatureType_Native, "GeoipDistance") == FeatureStatus_Available;
 	if(!SxGeoAvailable && !GeoIP2Available)
 		SetFailState("No geolocation extensions detected. Please install SxGeo or update to SM 1.11 with new GeoIP2");
 }
@@ -69,39 +69,39 @@ public void OnPluginStart()
 	PrintToServer("[Smart Fast Downloads] Initializing...");
 	CheckExtensions();
 	sfd_lookup_method = CreateConVar("sfd_lookup", "0", "Which geolocation API should be used? 0 - SxGeo, 1 - GeoIP2 with SourceMod 1.11");
-    gamedatafile = LoadGameConfigFile("betterfastdl.games");
-    
-    if(gamedatafile == null)
-        SetFailState("Cannot load betterfastdl.games.txt! Make sure you have it installed!");
+	gamedatafile = LoadGameConfigFile("betterfastdl.games");
+	
+	if(gamedatafile == null)
+		SetFailState("Cannot load betterfastdl.games.txt! Make sure you have it installed!");
 
-    Handle detourSendServerInfo = DHookCreateDetour(Address_Null, CallConv_THISCALL, ReturnType_Bool, ThisPointer_Address);
-    if(detourSendServerInfo==null)
-        SetFailState("Failed to create detour for CBaseClient::SendServerInfo!");
-        
-    if(!DHookSetFromConf(detourSendServerInfo, gamedatafile, SDKConf_Signature, "CBaseClient::SendServerInfo"))
-        SetFailState("Failed to load CBaseClient::SendServerInfo signature from gamedata!");
+	Handle detourSendServerInfo = DHookCreateDetour(Address_Null, CallConv_THISCALL, ReturnType_Bool, ThisPointer_Address);
+	if(detourSendServerInfo==null)
+		SetFailState("Failed to create detour for CBaseClient::SendServerInfo!");
+		
+	if(!DHookSetFromConf(detourSendServerInfo, gamedatafile, SDKConf_Signature, "CBaseClient::SendServerInfo"))
+		SetFailState("Failed to load CBaseClient::SendServerInfo signature from gamedata!");
    
-    if(!DHookEnableDetour(detourSendServerInfo, false, sendServerInfoDetCallback_Pre))
-        SetFailState("Failed to detour CBaseClient::SendServerInfo PreHook!");
+	if(!DHookEnableDetour(detourSendServerInfo, false, sendServerInfoDetCallback_Pre))
+		SetFailState("Failed to detour CBaseClient::SendServerInfo PreHook!");
 
-    Handle detourBuildConVarMessage = DHookCreateDetour(Address_Null, CallConv_CDECL, ReturnType_Void, ThisPointer_Ignore);
-    if(detourBuildConVarMessage == null)
-        SetFailState("Failed to create detour for Host_BuildConVarUpdateMessage!");
-    
-    if(!DHookSetFromConf(detourBuildConVarMessage, gamedatafile, SDKConf_Signature, "CBaseClient::SendServerInfo"))
-    	SetFailState("Failed to load Host_BuildConVarUpdateMessage signature from gamedata!");
+	Handle detourBuildConVarMessage = DHookCreateDetour(Address_Null, CallConv_CDECL, ReturnType_Void, ThisPointer_Ignore);
+	if(detourBuildConVarMessage == null)
+		SetFailState("Failed to create detour for Host_BuildConVarUpdateMessage!");
+	
+	if(!DHookSetFromConf(detourBuildConVarMessage, gamedatafile, SDKConf_Signature, "CBaseClient::SendServerInfo"))
+		SetFailState("Failed to load Host_BuildConVarUpdateMessage signature from gamedata!");
 
 	DHookAddParam(detourBuildConVarMessage, HookParamType_Unknown);
 	DHookAddParam(detourBuildConVarMessage, HookParamType_Int);
-	DHookAddParam(detourBuildConVarMessage, HookParamType_Bool);	
+	DHookAddParam(detourBuildConVarMessage, HookParamType_Bool);    
 	
-    if(!DHookEnableDetour(detourBuildConVarMessage, false, buildConVarMessageDetCallback_Pre))
-        SetFailState("Failed to detour Host_BuildConVarUpdateMessage PreHook!");
+	if(!DHookEnableDetour(detourBuildConVarMessage, false, buildConVarMessageDetCallback_Pre))
+		SetFailState("Failed to detour Host_BuildConVarUpdateMessage PreHook!");
   
-    if(!DHookEnableDetour(detourBuildConVarMessage, true, buildConVarMessageDetCallback_Post))
-        SetFailState("Failed to detour Host_BuildConVarUpdateMessage PostHook!");
+	if(!DHookEnableDetour(detourBuildConVarMessage, true, buildConVarMessageDetCallback_Post))
+		SetFailState("Failed to detour Host_BuildConVarUpdateMessage PostHook!");
 
-    nodeConfig = new KeyValues("FastDL Settings"); //Load the main node config file
+	nodeConfig = new KeyValues("FastDL Settings"); //Load the main node config file
 	char config[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, config, sizeof(config), "configs/fastdlmanager.cfg");
 	nodeConfig.ImportFromFile(config);
@@ -112,15 +112,12 @@ public void OnPluginStart()
 	debugfile = OpenFile(config, "a+", false);
 	
 	checkOS(); //Figure out what OS we're in to apply fixes
-	
-	
 
 	HookConVarChange(sfd_lookup_method, OnConVarChanged);
 	AutoExecConfig(true, "SmartFastDownloads");
-	
-	
+		
 	downloadurl = FindConVar("sv_downloadurl"); //Save original downloadurl, so we can send it to clients who we can't locate
-	downloadurl.GetString(originalConVar, sizeof(originalConVar));	
+	downloadurl.GetString(originalConVar, sizeof(originalConVar));  
 }
 
 public void OnConVarChanged(ConVar convar, const char[] oldValue, const char[] newValue)
@@ -164,20 +161,19 @@ public MRESReturn sendServerInfoDetCallback_Pre(Address pointer, Handle hReturn,
 public MRESReturn buildConVarMessageDetCallback_Pre(Handle hParams) //Second callback in chain, call our main function and get a node link in response
 {
 	char url[256];
-	getLocationSettings(url);
+	getLocationSettings(url, sizeof(url));
 	setConVarValue(url);
 	return MRES_Ignored;
 }
 
-void getLocationSettings(char[] link) //Main function
+void getLocationSettings(char[] link, int size) //Main function
 {
 	nodeConfig.Rewind();
 	float clientLongitude, clientLatitude;
 	if(nodeConfig.JumpToKey("Nodes", false)) 
 	{
 		char nodeURL[256], finalurl[256];
-		PrintToServer(clientIPAddress);
-		float distance, currentDistance; //1 - distance to the closest server, may change in iterations. 2 - distance between client and current iteration node	
+		float distance, currentDistance; //1 - distance to the closest server, may change in iterations. 2 - distance between client and current iteration node 
 		clientLatitude = GetLatitude(clientIPAddress); //clients coordinates
 		clientLongitude = GetLongitude(clientIPAddress);
 		char section[64];
@@ -186,28 +182,25 @@ void getLocationSettings(char[] link) //Main function
 		{
 			float nodeLongitude, nodeLatitude;
 			nodeConfig.GetSectionName(section, sizeof(section));
-				
-					
 			nodeLatitude = nodeConfig.GetFloat("latitude");
-			nodeLongitude = nodeConfig.GetFloat("longitude");
-			PrintToServer(clientIPAddress);							
+			nodeLongitude = nodeConfig.GetFloat("longitude");             
 			if(clientLatitude == 0 || clientLongitude == 0 || nodeLatitude == 0 || nodeLongitude == 0)
 			{
 				WriteFileLine(debugfile, "Failed distance calculation. Sending default values. Client(%f %f IP: %s) Node (%s).", clientLatitude, clientLongitude, clientIPAddress, section);
 				strcopy(link, 256, "EMPTY");
 				return;
 			}
-			currentDistance = GetDistance(nodeLatitude, nodeLongitude, clientLatitude, clientLongitude);	
+			currentDistance = GetDistance(nodeLatitude, nodeLongitude, clientLatitude, clientLongitude);    
 			if((currentDistance < distance) || distance == 0)
 			{
 				nodeConfig.GetString("link", nodeURL, sizeof(nodeURL), "EMPTY");
 				strcopy(finalurl, 256, nodeURL);
 				distance = currentDistance;
-			}					
+			}                   
 		}
 		while(nodeConfig.GotoNextKey(false));
-		strcopy(link, 256, nodeURL);
-		WriteFileLine(debugfile, "Sending: Distance is %f. Client IP Address: %s", distance, clientIPAddress);	
+		strcopy(link, size, nodeURL);
+		WriteFileLine(debugfile, "Sending: Distance is %f. Client IP Address: %s", distance, clientIPAddress);  
 	}
 	
 }
@@ -218,12 +211,12 @@ void setConVarValue(char[] value) //Sets the actual ConVar value
 	SetConVarFlags(downloadurl, oldflags &~ FCVAR_REPLICATED);
 	if (StrEqual(value, "EMPTY", false))
 	{
-		SetConVarString(downloadurl, originalConVar, true, false);	
+		SetConVarString(downloadurl, originalConVar, true, false);  
 		WriteFileLine(debugfile, "Default value set.");
 	}
 	else
 	{
-		SetConVarString(downloadurl, value, true, false);	
+		SetConVarString(downloadurl, value, true, false);   
 		WriteFileLine(debugfile, "New value set.");
 	}
 	FlushFile(debugfile);
@@ -233,7 +226,7 @@ void setConVarValue(char[] value) //Sets the actual ConVar value
 public MRESReturn buildConVarMessageDetCallback_Post(Handle hParams) //Reverts the ConVar to it's original value
 {
 	setConVarValue("EMPTY");
-	WriteFileLine(debugfile, "-------------------- END---------------------");	
+	WriteFileLine(debugfile, "-------------------- END---------------------");  
 	return MRES_Ignored;
 }
 
@@ -242,15 +235,15 @@ void processnodeConfigurationFile() //Traverse all nodes and save their latitude
 	if(nodeConfig.JumpToKey("Nodes", true))
 	{
 			char section[64], nodeclientIPAddress[64];
-			nodeConfig.GotoFirstSubKey(false);	
+			nodeConfig.GotoFirstSubKey(false);  
 			do
 			{
 				nodeConfig.GetSectionName(section, sizeof(section));
 				nodeConfig.GetString("ip", nodeclientIPAddress, sizeof(nodeclientIPAddress));
 				float nodeLatitude = GetLatitude(nodeclientIPAddress);
 				float nodeLongitude = GetLongitude(nodeclientIPAddress);
-				nodeConfig.SetFloat("latitude", nodeLatitude);	
-				nodeConfig.SetFloat("longitude", nodeLongitude);	
+				nodeConfig.SetFloat("latitude", nodeLatitude);  
+				nodeConfig.SetFloat("longitude", nodeLongitude);    
 				PrintToServer("[Smart Fast Downloads] Processed GPS location of node \"%s\".", section);
 			}
 			while(nodeConfig.GotoNextKey(false));
@@ -264,33 +257,33 @@ void processnodeConfigurationFile() //Traverse all nodes and save their latitude
 //TempEnts
 any GetPlayerSlot(Address pIClient)
 {
-    static Handle hPlayerSlot = INVALID_HANDLE;
-    if (hPlayerSlot == INVALID_HANDLE)
-    {
-        StartPrepSDKCall(SDKCall_Raw);
-        PrepSDKCall_SetFromConf(gamedatafile, SDKConf_Virtual, "CBaseClient::GetPlayerSlot");
-        PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);
-        hPlayerSlot = EndPrepSDKCall();
-    }
+	static Handle hPlayerSlot = INVALID_HANDLE;
+	if (hPlayerSlot == INVALID_HANDLE)
+	{
+		StartPrepSDKCall(SDKCall_Raw);
+		PrepSDKCall_SetFromConf(gamedatafile, SDKConf_Virtual, "CBaseClient::GetPlayerSlot");
+		PrepSDKCall_SetReturnInfo(SDKType_PlainOldData, SDKPass_Plain);
+		hPlayerSlot = EndPrepSDKCall();
+	}
 
-    return SDKCall(hPlayerSlot, pIClient);
+	return SDKCall(hPlayerSlot, pIClient);
 }
 // TempEnts
 void checkOS()
 {
-    char cmdline[256];
-    GetCommandLine(cmdline, sizeof(cmdline));
+	char cmdline[256];
+	GetCommandLine(cmdline, sizeof(cmdline));
 
-    if (StrContains(cmdline, "./srcds_linux ", false) != -1)
-    {
-        os = "linux";
-    }
-    else if (StrContains(cmdline, ".exe", false) != -1)
-    {
-        os = "windows";
-    }
-    else
-    {
-        os = "unknown";
-    }
+	if (StrContains(cmdline, "./srcds_linux ", false) != -1)
+	{
+		os = "linux";
+	}
+	else if (StrContains(cmdline, ".exe", false) != -1)
+	{
+		os = "windows";
+	}
+	else
+	{
+		os = "unknown";
+	}
 }
