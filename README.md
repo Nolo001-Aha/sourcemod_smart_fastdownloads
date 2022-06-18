@@ -23,3 +23,12 @@
 * Upload the files to their respective folders.
 * Edit the configuration file under _configs/fastdlmanager.cfg_.
 * Start the server/load the plugin. Please note that the main configuration file must be edited BEFORE the plugin starts and that any non-KeyValue information will be lost.
+
+**Example node config entry**
+```
+"Download Node 1" //The name of your node
+{
+		"ip"    "192.168.1.1" // IP address of the download node. You can find it with any 3rd party service. Used for node location calculations
+		"Link"  "http://example.com/tf" // The download link that clients receive. Self-explanatory I guess
+}
+```
