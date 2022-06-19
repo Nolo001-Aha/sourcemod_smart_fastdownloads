@@ -2,15 +2,48 @@
 {
 	"#default"
 	{
+		"Functions"
+		{
+			"CBaseClient::SendServerInfo()"
+			{
+				"signature"	"CBaseClient::SendServerInfo()"
+				"callconv"	"thiscall"
+				"this"		"address"
+				"return"	"bool"
+			}
+			"Host_BuildConVarUpdateMessage()"
+			{
+				"signature"	"Host_BuildConVarUpdateMessage()"
+				"callconv"	"cdecl"
+				"this"		"ignore"
+				"return"	"void"
+
+				"arguments"
+				{
+					"cvarMsg"
+					{
+						"type"	"unknown"
+					}
+					"flags"
+					{
+						"type"	"int"
+					}
+					"nonDefault"
+					{
+						"type"	"bool"
+					}
+				}
+			}
+		}
 		"Signatures"
 		{
-			"CBaseClient::SendServerInfo"
+			"CBaseClient::SendServerInfo()"
 			{
 				"library"		"engine"
 				"windows"		"\x55\x8B\xEC\xB8\x2A\x2A\x2A\x2A\xE8\x2A\x2A\x2A\x2A\x53\x56\x8B\x2A\x2A\x2A\x2A\x2A\x8B\xD9\x68"
 				"linux"			"_ZN11CBaseClient14SendServerInfoEv"
 			}
-			"Host_BuildConVarUpdateMessage"
+			"Host_BuildConVarUpdateMessage()"
 			{
 				"library"		"engine"
 				"windows"		"\x55\x8B\xEC\x81\xEC\x08\x02\x00\x00\x53\xFF\x75\x10\x8B\x5D\x0C\x53\xE8"
@@ -19,7 +52,7 @@
 		}
         "Offsets"
         {
-            "CBaseClient::GetPlayerSlot"
+            "CBaseClient::GetPlayerSlot()"
             {
                 "linux"     "3"
                 "windows"   "14"
