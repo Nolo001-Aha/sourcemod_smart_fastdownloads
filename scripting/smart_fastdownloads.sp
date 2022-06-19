@@ -66,7 +66,7 @@ public void OnPluginStart()
 	if(detourBuildConVarMessage == null)
 		SetFailState("Failed to create detour for Host_BuildConVarUpdateMessage!");
 	
-	if(!DHookSetFromConf(detourBuildConVarMessage, gamedatafile, SDKConf_Signature, "CBaseClient::SendServerInfo"))
+	if(!DHookSetFromConf(detourBuildConVarMessage, gamedatafile, SDKConf_Signature, "Host_BuildConVarUpdateMessage"))
 		SetFailState("Failed to load Host_BuildConVarUpdateMessage signature from gamedata!");
 
 	DHookAddParam(detourBuildConVarMessage, HookParamType_Unknown);
