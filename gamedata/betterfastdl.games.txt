@@ -22,7 +22,7 @@
 				{
 					"cvarMsg"
 					{
-						"type"	"unknown"
+						"type"	"objectptr"
 					}
 					"flags"
 					{
